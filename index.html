@@ -192,7 +192,7 @@
             }
         });
 
-        let camera, scene, renderer, ship, skyMaterial, cosmicLights = [], npcShips = [];
+        let camera, scene, renderer, ship, skyMaterial, cosmicLights = [], npcShips = [], aliens = [];
         let velocity = new THREE.Vector3();
         const maxSpeed = 0.35, accel = 0.06, friction = 0.97, liftSpeed = 0.2, blastSpeed = 10;
         let keys = { w: false, s: false, a: false, d: false, space: false };
@@ -204,16 +204,16 @@
         let time = 0, spaceHoldTime = 0, cycleTime = 0;
         let cameraDistance = 15, cameraHeight = 5;
 
-        function fractalNoise(x, z, octaves = 4) {
-            let total = 0, frequency = 0.03, amplitude = 1, maxValue = 0;
+        function fractalNoise(x, z, octaves = 6) {
+            let total = 0, frequency = 0.025, amplitude = 1, maxValue = 0;
             for (let i = 0; i < octaves; i++) {
                 total += Math.sin(x * frequency) * Math.cos(z * frequency) * amplitude;
-                total += Math.random() * 0.5 * amplitude;
+                total += Math.random() * 0.3 * amplitude;
                 maxValue += amplitude;
-                amplitude *= 0.5;
+                amplitude *= 0.6;
                 frequency *= 2;
             }
-            return total / maxValue * 15;
+            return total / maxValue * 20;
         }
 
         function init() {
@@ -234,8 +234,9 @@
             createCosmicSky();
             createTerrain();
             createShip();
-            createSkyscraper();
+            createSkyscraperAndPyramids();
             createNPCShips();
+            createAliens();
             setupJoystick();
             setupControls();
 
@@ -329,16 +330,16 @@
             for (let i = 0; i < vertices.length; i += 3) {
                 const x = vertices[i], z = vertices[i + 2];
                 const distance = Math.sqrt(x * x + z * z);
-                vertices[i + 1] = fractalNoise(x, z) * (1 - Math.min(1, distance / 500));
+                vertices[i + 1] = fractalNoise(x, z) * (1 - Math.min(1, distance / 600));
             }
             groundGeometry.computeVertexNormals();
 
             const groundMaterial = new THREE.MeshStandardMaterial({
-                color: 0x2a3a5a,
-                roughness: 0.8,
-                metalness: 0.25,
+                color: 0x1e2a4a,
+                roughness: 0.7,
+                metalness: 0.2,
                 emissive: 0x102030,
-                emissiveIntensity: 0.5,
+                emissiveIntensity: 0.6,
                 vertexColors: true
             });
             const ground = new THREE.Mesh(groundGeometry, groundMaterial);
@@ -376,7 +377,7 @@
             ship = shipGroup;
         }
 
-        function createSkyscraper() {
+        function createSkyscraperAndPyramids() {
             const skyscraperGroup = new THREE.Group();
 
             const towerGeometry = new THREE.CylinderGeometry(5, 5, 100, 32);
@@ -395,9 +396,30 @@
             platform.receiveShadow = true;
             skyscraperGroup.add(platform);
 
-            // Text omitted due to font dependency - add FontLoader if desired
             skyscraperGroup.position.set(0, 0, 0);
             scene.add(skyscraperGroup);
+
+            const pyramidPositions = [
+                { x: 0, z: 10 },  // Front
+                { x: 0, z: -10 }, // Back
+                { x: -10, z: 0 }, // Left
+                { x: 10, z: 0 }   // Right
+            ];
+            pyramidPositions.forEach(pos => {
+                const pyramidGeometry = new THREE.TetrahedronGeometry(10);
+                const pyramidMaterial = new THREE.MeshPhongMaterial({
+                    color: 0x00ccff,
+                    emissive: 0x0077aa,
+                    shininess: 80,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const pyramid = new THREE.Mesh(pyramidGeometry, pyramidMaterial);
+                pyramid.position.set(pos.x, fractalNoise(pos.x, pos.z) + 10, pos.z);
+                pyramid.castShadow = true;
+                pyramid.receiveShadow = true;
+                scene.add(pyramid);
+            });
         }
 
         function createNPCShips() {
@@ -426,9 +448,47 @@
                 npcShip.add(ring);
 
                 npcShip.position.set(Math.random() * 800 - 400, 50 + Math.random() * 50, Math.random() * 800 - 400);
-                npcShip.userData = { speed: Math.random() * 0.1 + 0.05, angle: Math.random() * Math.PI * 2 };
+                npcShip.userData = {
+                    speed: Math.random() * 0.1 + 0.05,
+                    angleX: Math.random() * Math.PI * 2,
+                    angleZ: Math.random() * Math.PI * 2
+                };
                 scene.add(npcShip);
                 npcShips.push(npcShip);
+            }
+        }
+
+        function createAliens() {
+            const colors = [0x00ff00, 0xff8800, 0xaa00ff];
+            for (let i = 0; i < 10; i++) {
+                const alien = new THREE.Group();
+
+                const bodyGeometry = new THREE.SphereGeometry(1, 16, 16);
+                const bodyMaterial = new THREE.MeshPhongMaterial({ color: colors[i % 3], shininess: 30 });
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.position.y = 1.5;
+                alien.add(body);
+
+                const headGeometry = new THREE.SphereGeometry(1.2, 16, 16);
+                const head = new THREE.Mesh(headGeometry, bodyMaterial);
+                head.position.y = 3;
+                alien.add(head);
+
+                const legGeometry = new THREE.CylinderGeometry(0.2, 0.2, 1, 8);
+                const legMaterial = new THREE.MeshPhongMaterial({ color: colors[i % 3] });
+                const leg1 = new THREE.Mesh(legGeometry, legMaterial);
+                leg1.position.set(-0.5, 0.5, 0);
+                alien.add(leg1);
+                const leg2 = new THREE.Mesh(legGeometry, legMaterial);
+                leg2.position.set(0.5, 0.5, 0);
+                alien.add(leg2);
+
+                const x = Math.random() * 800 - 400;
+                const z = Math.random() * 800 - 400;
+                alien.position.set(x, fractalNoise(x, z) + 1.5, z);
+                alien.userData = { speed: Math.random() * 0.05 + 0.02, angle: Math.random() * Math.PI * 2 };
+                scene.add(alien);
+                aliens.push(alien);
             }
         }
 
@@ -488,7 +548,7 @@
                     vertices[j + 1] += Math.random() * 5 - 2.5;
                 }
                 islandGeometry.computeVertexNormals();
-                const islandMaterial = new THREE.MeshStandardMaterial({ color: 0x4a5a7a, roughness: 0.9 });
+                const islandMaterial = new THREE.MeshStandardMaterial({ color: 0x304a7a, roughness: 0.9 });
                 const island = new THREE.Mesh(islandGeometry, islandMaterial);
                 island.position.set(Math.random() * 800 - 400, 50 + Math.random() * 50, Math.random() * 800 - 400);
                 island.castShadow = true;
@@ -645,7 +705,7 @@
             cosmicLights[3].position.set(Math.sin(time + 1) * 360, Math.cos(time * 0.7) * 220 * (1 - dayNight), Math.cos(time + 1) * 360);
 
             scene.children.forEach(child => {
-                if (child.userData.speed && !child.userData.angle) {
+                if (child.userData.speed && !child.userData.angle && !child.userData.angleX) {
                     child.position.x += child.userData.speed;
                     child.position.y = 100 + Math.sin(time + child.userData.hover) * 10;
                     if (child.position.x > 400) child.position.x = -400;
@@ -654,15 +714,28 @@
             });
 
             npcShips.forEach(ship => {
-                ship.userData.angle += ship.userData.speed * 0.05;
-                ship.position.x += Math.cos(ship.userData.angle) * ship.userData.speed;
-                ship.position.z += Math.sin(ship.userData.angle) * ship.userData.speed;
-                ship.position.y = 50 + Math.sin(time + ship.position.x) * 10;
+                ship.userData.angleX += ship.userData.speed * 0.03;
+                ship.userData.angleZ += ship.userData.speed * 0.02;
+                ship.position.x += Math.cos(ship.userData.angleX) * ship.userData.speed;
+                ship.position.z += Math.sin(ship.userData.angleZ) * ship.userData.speed;
+                ship.position.y = 75 + Math.sin(time + ship.position.x) * 25;
                 ship.rotation.y += 0.05;
                 if (ship.position.x > 1000) ship.position.x = -1000;
                 if (ship.position.x < -1000) ship.position.x = 1000;
                 if (ship.position.z > 1000) ship.position.z = -1000;
                 if (ship.position.z < -1000) ship.position.z = 1000;
+            });
+
+            aliens.forEach(alien => {
+                alien.userData.angle += alien.userData.speed * 0.1;
+                alien.position.x += Math.cos(alien.userData.angle) * alien.userData.speed;
+                alien.position.z += Math.sin(alien.userData.angle) * alien.userData.speed;
+                alien.position.y = fractalNoise(alien.position.x, alien.position.z) + 1.5 + Math.sin(time * 2 + alien.position.x) * 0.5;
+                alien.rotation.z = Math.sin(time + alien.position.x) * 0.2;
+                if (alien.position.x > 1000) alien.position.x = -1000;
+                if (alien.position.x < -1000) alien.position.x = 1000;
+                if (alien.position.z > 1000) alien.position.z = -1000;
+                if (alien.position.z < -1000) alien.position.z = 1000;
             });
         }
 
@@ -706,7 +779,7 @@
                         const dz = Math.abs(Math.floor(i / 256) - shipZ);
                         const dist = Math.sqrt(dx * dx + dz * dz);
                         const tint = Math.max(0, 1 - dist / 20);
-                        colors.setXYZ(i, 0.2 + tint * 0.1, 0.3 + tint * 0.2, 0.6 + tint * 0.2);
+                        colors.setXYZ(i, 0.12 + tint * 0.1, 0.18 + tint * 0.2, 0.29 + tint * 0.2);
                     }
                     ground.geometry.setAttribute('color', colors);
                     ground.geometry.attributes.color.needsUpdate = true;
