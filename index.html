@@ -136,38 +136,6 @@
             touch-action: none;
         }
 
-        #loading {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            background: linear-gradient(135deg, #0a0a1e, #1e1e3c);
-            color: #fff;
-            z-index: 100;
-            font-size: 24px;
-            text-shadow: 0 0 5px #00d4ff;
-        }
-
-        #loading-progress {
-            width: 80%;
-            max-width: 300px;
-            height: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            margin-top: 20px;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        #progress-bar {
-            height: 100%;
-            width: 0%;
-            background: linear-gradient(90deg, #00d4ff, #ff00ff);
-            transition: width 0.3s;
-        }
-
         #instructions {
             position: absolute;
             top: 20px;
@@ -199,12 +167,6 @@
         <div id="footer">Designed by Nana Kofi cosmoscoderr@gmail.com</div>
     </div>
 
-    <div id="loading">
-        <div>Loading Cosmic Horizon...</div>
-        <div id="loading-progress">
-            <div id="progress-bar"></div>
-        </div>
-    </div>
     <div id="instructions">
         W/S: Thrust forward/back | A/D: Strafe | Joystick/Mouse: Look around | Arrow keys: Rotate view | +/-: Zoom in/out | Space: Tap to lift, hold 3s+ to blast off
     </div>
@@ -222,7 +184,12 @@
         startButton.addEventListener('click', () => {
             intro.style.display = 'none';
             canvas.style.display = 'block';
-            init();
+            try {
+                init();
+            } catch (error) {
+                console.error('Failed to initialize game:', error);
+                alert('Oops! Something went wrong starting Cosmic Horizon. Check the console for details.');
+            }
         });
 
         let camera, scene, renderer, ship, skyMaterial, cosmicLights = [], npcShips = [];
@@ -234,7 +201,6 @@
         let targetLon = 0, targetLat = 0;
         let phi = 0, theta = 0;
         let joystick, joystickRect, joystickCenterX, joystickCenterY, joystickActive = false, joystickTouchId = null;
-        let loadingElement, progressBar;
         let time = 0, spaceHoldTime = 0, cycleTime = 0;
         let cameraDistance = 15, cameraHeight = 5;
 
@@ -251,8 +217,9 @@
         }
 
         function init() {
-            loadingElement = document.getElementById('loading');
-            progressBar = document.getElementById('progress-bar');
+            if (typeof THREE === 'undefined') {
+                throw new Error('Three.js not loaded. Check your internet or CDN link.');
+            }
 
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
@@ -277,13 +244,10 @@
             document.addEventListener('pointermove', onPointerMove);
             document.addEventListener('pointerup', onPointerUp);
 
-            setTimeout(() => loadingElement.style.display = 'none', 2000);
             animate();
         }
 
         function createCosmicSky() {
-            updateProgress(10);
-
             const skyGeometry = new THREE.SphereGeometry(1500, 60, 40);
             skyGeometry.scale(-1, 1, 1);
 
@@ -356,12 +320,9 @@
             scene.add(particles);
 
             scene.add(new THREE.AmbientLight(0x303050, 0.5));
-            updateProgress(40);
         }
 
         function createTerrain() {
-            updateProgress(50);
-
             const groundGeometry = new THREE.PlaneGeometry(2000, 2000, 256, 256);
             groundGeometry.rotateX(-Math.PI / 2);
             const vertices = groundGeometry.attributes.position.array;
@@ -385,7 +346,6 @@
             scene.add(ground);
 
             addEnvironmentDetails();
-            updateProgress(80);
         }
 
         function createShip() {
@@ -414,8 +374,6 @@
             shipGroup.position.set(0, 10, 0);
             scene.add(shipGroup);
             ship = shipGroup;
-
-            updateProgress(90);
         }
 
         function createSkyscraper() {
@@ -437,17 +395,7 @@
             platform.receiveShadow = true;
             skyscraperGroup.add(platform);
 
-            const textGeometry = new THREE.TextGeometry('Nana Kofi cosmoscoderr@gmail.com', {
-                size: 1,
-                height: 0.2,
-                font: new THREE.FontLoader().parse({}) // Fallback, ideally load a font
-            });
-            const textMaterial = new THREE.MeshBasicMaterial({ color: 0xff00ff });
-            const text = new THREE.Mesh(textGeometry, textMaterial);
-            text.position.set(-8, 60, 5);
-            text.rotation.y = Math.PI / 4;
-            skyscraperGroup.add(text);
-
+            // Text omitted due to font dependency - add FontLoader if desired
             skyscraperGroup.position.set(0, 0, 0);
             scene.add(skyscraperGroup);
         }
@@ -685,8 +633,8 @@
             time += 0.015;
             cycleTime += 0.015;
 
-            const cycleDuration = 60; // 60s cycle
-            const dayNight = Math.sin(cycleTime * Math.PI / cycleDuration) * 0.5 + 0.5; // 0 (night) to 1 (day)
+            const cycleDuration = 60;
+            const dayNight = Math.sin(cycleTime * Math.PI / cycleDuration) * 0.5 + 0.5;
             skyMaterial.uniforms.time.value = time;
             skyMaterial.uniforms.dayNight.value = dayNight;
             skyMaterial.uniforms.pulseIntensity.value = 0.4 + Math.sin(time * 0.3) * 0.2 * (1 - dayNight);
@@ -790,12 +738,6 @@
             updateCamera();
             renderer.render(scene, camera);
         }
-
-        function updateProgress(percent) {
-            progressBar.style.width = percent + '%';
-        }
-
-        window.addEventListener('load', () => updateProgress(100));
     </script>
 </body>
 </html>
