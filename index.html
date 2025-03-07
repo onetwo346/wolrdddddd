@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cosmic Horizon: Saucer Explorer</title>
+    <style>
+        /* Existing styles unchanged unless noted */
+        #intro p {
+            font-size: 1.5rem;
+            color: #aaaaff;
+            text-shadow: 0 0 5px #00d4ff;
+            margin-top: 20px;
+            max-width: 600px;
+            text-align: center;
+            animation: scrollIn 2s ease-out forwards;
+        }
+        @keyframes scrollIn {
+            0% { opacity: 0; transform: translateY(50px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Intro Page with Info -->
+    <div id="intro">
+        <h1>Cosmic Horizon</h1>
+        <p>Explore an infinite cosmic expanse, pilot your saucer through shifting skies, and land on towering wonders.</p>
+        <div id="start-button">Tap to Start</div>
+        <div id="footer">Designed by Nana Kofi cosmoscoderr@gmail.com</div>
+    </div>
+
+    <!-- Game Elements (unchanged) -->
+    <div id="loading">...</div>
+    <div id="instructions">...</div>
+    <canvas id="canvas"></canvas>
+    <div id="joystick-container">...</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Core variables (added cycle timer)
+        let camera, scene, renderer, ship, skyscraper;
+        let skyMaterial, cosmicLights = [], npcShips = [];
+        let velocity = new THREE.Vector3();
+        const maxSpeed = 0.35, accel = 0.06, friction = 0.97, liftSpeed = 0.2, blastSpeed = 10;
+        let keys = { w: false, s: false, a: false, d: false, space: false };
+        let cycleTime = 0, cycleDuration = 360; // 6-minute cycle (in frames @ 60fps)
+        // Other variables unchanged...
+
+        function init() {
+            // Unchanged setup...
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+
+            createCosmicSky();
+            createTerrain();
+            createSkyscraper(); // New
+            createShip();
+            createNPCShips(); // New
+            setupJoystick();
+            setupControls();
+
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('pointerdown', onPointerDown);
+            // Other listeners unchanged...
+
+            setTimeout(() => loadingElement.style.display = 'none', 2000);
+            animate();
+        }
+
+        function createCosmicSky() {
+            updateProgress(10);
+            const skyGeometry = new THREE.SphereGeometry(1500, 60, 40);
+            skyGeometry.scale(-1, 1, 1);
+
+            const uniforms = {
+                time: { value: 0 },
+                cycleTime: { value: 0 }, // For day-night
+                baseColor: { value: new THREE.Vector3(0.05, 0.1, 0.3) },
+                pulseIntensity: { value: 0.5 }
+            };
+
+            const vertexShader = `
+                varying vec3 vWorldPosition;
+                void main() {
+                    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `;
+            const fragmentShader = `
+                uniform float time;
+                uniform float cycleTime;
+                uniform vec3 baseColor;
+                uniform float pulseIntensity;
+                varying vec3 vWorldPosition;
+                void main() {
+                    vec3 dir = normalize(vWorldPosition);
+                    float noise = sin(dir.x * 3.0 + time) * cos(dir.y * 3.0 + time) * 0.5;
+                    float cycle = sin(cycleTime); // -1 (night) to 1 (day)
+                    vec3 nightColor = mix(baseColor, vec3(0.8, 0.4, 0.6), noise + 0.5);
+                    vec3 dayColor = mix(vec3(0.8, 0.5, 0.3), vec3(1.0, 0.9, 0.7), noise + 0.5);
+                    vec3 color = mix(nightColor, dayColor, (cycle + 1.0) / 2.0);
+                    float pulse = sin(time * 0.5 + dir.z * 5.0) * pulseIntensity;
+                    float aurora = abs(cycle); // Peaks at transitions
+                    vec3 finalColor = mix(color, vec3(1.0, 0.8, 0.4), pulse + (1.0 - aurora) * 0.3);
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `;
+
+            skyMaterial = new THREE.ShaderMaterial({ uniforms, vertexShader, fragmentShader, side: THREE.BackSide });
+            const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+            scene.add(sky);
+
+            // Stars and lights unchanged...
+            const particleGeometry = new THREE.BufferGeometry();
+            const particleVertices = [];
+            for (let i = 0; i < 3000; i++) {
+                particleVertices.push((Math.random() - 0.5) * 1800, Math.random() * 800 + 50, (Math.random() - 0.5) * 1800);
+            }
+            particleGeometry.setAttribute('position', new THREE.Float32BufferAttribute(particleVertices, 3));
+            const particleMaterial = new THREE.PointsMaterial({ color: 0xaaaaff, size: 2, transparent: true, blending: THREE.AdditiveBlending });
+            const particles = new THREE.Points(particleGeometry, particleMaterial);
+            scene.add(particles);
+
+            // Aurora particles
+            const auroraGeometry = new THREE.BufferGeometry();
+            const auroraVertices = [];
+            for (let i = 0; i < 1000; i++) {
+                auroraVertices.push((Math.random() - 0.5) * 1000, Math.random() * 200 + 50, (Math.random() - 0.5) * 1000);
+            }
+            auroraGeometry.setAttribute('position', new THREE.Float32BufferAttribute(auroraVertices, 3));
+            const auroraMaterial = new THREE.PointsMaterial({ color: 0x00ffcc, size: 3, transparent: true, opacity: 0, blending: THREE.AdditiveBlending });
+            const aurora = new THREE.Points(auroraGeometry, auroraMaterial);
+            scene.add(aurora);
+
+            updateProgress(40);
+        }
+
+        function createTerrain() {
+            updateProgress(50);
+            const terrains = [];
+            for (let xOffset = -1; xOffset <= 1; xOffset++) {
+                for (let zOffset = -1; zOffset <= 1; zOffset++) {
+                    const groundGeometry = new THREE.PlaneGeometry(2000, 2000, 256, 256);
+                    groundGeometry.rotateX(-Math.PI / 2);
+                    const vertices = groundGeometry.attributes.position.array;
+                    for (let i = 0; i < vertices.length; i += 3) {
+                        const x = vertices[i] + xOffset * 2000, z = vertices[i + 2] + zOffset * 2000;
+                        const distance = Math.sqrt(x * x + z * z);
+                        vertices[i + 1] = fractalNoise(x, z) * (1 - Math.min(1, distance / 500));
+                    }
+                    groundGeometry.computeVertexNormals();
+
+                    const groundMaterial = new THREE.MeshStandardMaterial({
+                        color: 0x2a3a5a,
+                        roughness: 0.8,
+                        metalness: 0.25,
+                        emissive: 0x102030,
+                        emissiveIntensity: 0.5,
+                        vertexColors: true
+                    });
+                    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                    ground.position.set(xOffset * 2000, 0, zOffset * 2000);
+                    ground.receiveShadow = true;
+                    scene.add(ground);
+                    terrains.push(ground);
+                }
+            }
+
+            // Cosmic fissures
+            const fissureGeometry = new THREE.PlaneGeometry(2000, 2000, 256, 256);
+            fissureGeometry.rotateX(-Math.PI / 2);
+            const fissureMaterial = new THREE.ShaderMaterial({
+                uniforms: { time: { value: 0 }, cycleTime: { value: 0 } },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform float cycleTime;
+                    varying vec2 vUv;
+                    void main() {
+                        float noise = sin(vUv.x * 10.0 + time) * cos(vUv.y * 10.0 + time);
+                        float intensity = pow(abs(noise), 5.0) * 0.5;
+                        vec3 color = mix(vec3(0.1, 0.2, 0.5), vec3(0.3, 0.7, 1.0), (sin(cycleTime) + 1.0) / 2.0);
+                        gl_FragColor = vec4(color * intensity, intensity);
+                    }
+                `,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+            const fissure = new THREE.Mesh(fissureGeometry, fissureMaterial);
+            fissure.position.y = 0.1;
+            scene.add(fissure);
+
+            addEnvironmentDetails();
+            updateProgress(80);
+        }
+
+        function createSkyscraper() {
+            const skyscraperGroup = new THREE.Group();
+            const height = 100;
+
+            const baseGeometry = new THREE.CylinderGeometry(5, 8, height, 32);
+            const baseMaterial = new THREE.MeshPhongMaterial({
+                color: 0x3a5a7a,
+                shininess: 50,
+                emissive: 0x102030
+            });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.castShadow = true;
+            base.receiveShadow = true;
+            skyscraperGroup.add(base);
+
+            // Holographic panels
+            const panelGeometry = new THREE.PlaneGeometry(6, height * 0.8);
+            const panelMaterial = new THREE.ShaderMaterial({
+                uniforms: { time: { value: 0 }, cycleTime: { value: 0 } },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform float time;
+                    uniform float cycleTime;
+                    varying vec2 vUv;
+                    void main() {
+                        float glow = sin(vUv.y * 5.0 + time) * 0.5 + 0.5;
+                        vec3 color = mix(vec3(0.0, 1.0, 1.0), vec3(1.0, 0.0, 1.0), (sin(cycleTime) + 1.0) / 2.0);
+                        gl_FragColor = vec4(color * glow, glow * 0.7);
+                    }
+                `,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+            for (let i = 0; i < 4; i++) {
+                const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+                panel.rotation.y = i * Math.PI / 2;
+                panel.position.set(Math.sin(i * Math.PI / 2) * 5.1, height / 2, Math.cos(i * Math.PI / 2) * 5.1);
+                skyscraperGroup.add(panel);
+            }
+
+            // Landing pad
+            const padGeometry = new THREE.CircleGeometry(10, 32);
+            const padMaterial = new THREE.MeshBasicMaterial({ color: 0x00ccff, transparent: true, opacity: 0.8 });
+            const pad = new THREE.Mesh(padGeometry, padMaterial);
+            pad.rotation.x = -Math.PI / 2;
+            pad.position.y = height + 0.1;
+            skyscraperGroup.add(pad);
+
+            skyscraperGroup.position.set(0, fractalNoise(0, 0) + height / 2, 0);
+            scene.add(skyscraperGroup);
+            skyscraper = skyscraperGroup;
+        }
+
+        function createNPCShips() {
+            for (let i = 0; i < 10; i++) {
+                const npcShip = createShipModel();
+                npcShip.position.set((Math.random() - 0.5) * 1000, Math.random() * 200 + 50, (Math.random() - 0.5) * 1000);
+                npcShip.userData = { speed: Math.random() * 0.1 + 0.05, angle: Math.random() * Math.PI * 2 };
+                scene.add(npcShip);
+                npcShips.push(npcShip);
+
+                // Stardust trail
+                const trailGeometry = new THREE.BufferGeometry();
+                const trailVertices = new Float32Array(100 * 3);
+                trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailVertices, 3));
+                const trailMaterial = new THREE.PointsMaterial({ color: 0xaaaaff, size: 1, transparent: true, blending: THREE.AdditiveBlending });
+                const trail = new THREE.Points(trailGeometry, trailMaterial);
+                trail.userData = { ship: npcShip, positions: [], life: 0 };
+                scene.add(trail);
+            }
+        }
+
+        function createShipModel() {
+            const shipGroup = new THREE.Group();
+            const baseGeometry = new THREE.CylinderGeometry(3, 2.5, 0.8, 32, 1, false, 0, Math.PI * 1.8);
+            const baseMaterial = new THREE.MeshPhongMaterial({ color: 0xaaaaaa, shininess: 50 });
+            const base = new THREE.Mesh(baseGeometry, baseMaterial);
+            base.castShadow = true;
+            shipGroup.add(base);
+
+            const domeGeometry = new THREE.SphereGeometry(1.5, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+            const domeMaterial = new THREE.MeshPhongMaterial({ color: 0x00ffaa, transparent: true, opacity: 0.8, shininess: 100 });
+            const dome = new THREE.Mesh(domeGeometry, domeMaterial);
+            dome.position.y = 0.8;
+            dome.castShadow = true;
+            shipGroup.add(dome);
+
+            const ringGeometry = new THREE.TorusGeometry(2, 0.2, 8, 32);
+            const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xff00ff });
+            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+            ring.rotation.x = Math.PI / 2;
+            ring.position.y = -0.1;
+            shipGroup.add(ring);
+            return shipGroup;
+        }
+
+        // Unchanged functions: createShip, addEnvironmentDetails, setupJoystick, setupControls...
+
+        function updateCosmicEnvironment() {
+            time += 0.015;
+            cycleTime += Math.PI * 2 / cycleDuration; // Full cycle over time
+
+            // Day-night cycle
+            skyMaterial.uniforms.time.value = time;
+            skyMaterial.uniforms.cycleTime.value = cycleTime;
+            const aurora = scene.children.find(child => child.isPoints && child.material.color.getHex() === 0x00ffcc);
+            aurora.material.opacity = Math.max(0, 1 - Math.abs(Math.sin(cycleTime)) * 2); // Peaks at transitions
+
+            // Cosmic lights
+            cosmicLights[0].position.set(Math.cos(time) * 400, Math.sin(time * 0.8) * 250, Math.sin(time) * 400);
+            // Other lights unchanged...
+
+            // Fissures and skyscraper
+            scene.children.forEach(child => {
+                if (child.material && child.material.uniforms && child.material.uniforms.cycleTime) {
+                    child.material.uniforms.time.value = time;
+                    child.material.uniforms.cycleTime.value = cycleTime;
+                }
+            });
+
+            // NPC ships and trails
+            npcShips.forEach((npc, i) => {
+                npc.position.x += Math.cos(npc.userData.angle) * npc.userData.speed;
+                npc.position.z += Math.sin(npc.userData.angle) * npc.userData.speed;
+                npc.position.y = 50 + Math.sin(time + i) * 20;
+                npc.rotation.y += 0.05;
+                if (Math.random() < 0.01) npc.userData.angle += (Math.random() - 0.5) * 0.5;
+
+                const trail = scene.children.find(t => t.isPoints && t.userData.ship === npc);
+                if (trail) {
+                    trail.userData.positions.push(npc.position.clone());
+                    if (trail.userData.positions.length > 100) trail.userData.positions.shift();
+                    const positions = trail.geometry.attributes.position.array;
+                    for (let j = 0; j < trail.userData.positions.length; j++) {
+                        const pos = trail.userData.positions[j];
+                        positions[j * 3] = pos.x;
+                        positions[j * 3 + 1] = pos.y;
+                        positions[j * 3 + 2] = pos.z;
+                    }
+                    trail.geometry.attributes.position.needsUpdate = true;
+                    trail.geometry.setDrawRange(0, trail.userData.positions.length);
+                }
+            });
+
+            // Floating orbs unchanged...
+            scene.children.forEach(child => {
+                if (child.userData.speed) {
+                    child.position.x += child.userData.speed;
+                    child.position.y = 100 + Math.sin(time + child.userData.hover) * 10;
+                    if (child.position.x > 400) child.position.x = -400;
+                    child.scale.setScalar(1 + Math.sin(time * 2 + child.userData.hover) * 0.15);
+                }
+            });
+        }
+
+        function updateMovement() {
+            // Unchanged movement logic...
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+
+            if (keys.w) velocity.add(forward.multiplyScalar(accel));
+            if (keys.s) velocity.add(forward.multiplyScalar(-accel));
+            if (keys.a) velocity.add(right.multiplyScalar(-accel));
+            if (keys.d) velocity.add(right.multiplyScalar(accel));
+            if (keys.space) velocity.y += liftSpeed;
+
+            velocity.clampLength(0, maxSpeed * 2);
+            velocity.multiplyScalar(friction);
+            ship.position.add(velocity);
+
+            // Skyscraper landing check
+            const padHeight = skyscraper.position.y + 50 - 0.1;
+            if (Math.abs(ship.position.x) < 10 && Math.abs(ship.position.z) < 10 && ship.position.y > padHeight - 1 && ship.position.y < padHeight + 2) {
+                ship.position.y = padHeight;
+                velocity.y = Math.max(0, velocity.y);
+            }
+
+            // Ground collision (updated for multiple terrains)
+            scene.children.filter(child => child.isMesh && child.geometry.type === 'PlaneGeometry').forEach(ground => {
+                const raycaster = new THREE.Raycaster(ship.position, new THREE.Vector3(0, -1, 0), 0, 20);
+                const intersects = raycaster.intersectObject(ground);
+                if (intersects.length > 0 && ship.position.y < intersects[0].point.y + 3) {
+                    ship.position.y = intersects[0].point.y + 3;
+                    velocity.y = Math.max(0, velocity.y);
+                }
+            });
+
+            ship.position.y += Math.sin(time * 2) * 0.1;
+            ship.rotation.x = THREE.MathUtils.lerp(ship.rotation.x, velocity.z * 0.1, 0.1);
+            ship.rotation.z = THREE.MathUtils.lerp(ship.rotation.z, -velocity.x * 0.1, 0.1);
+            ship.rotation.y += 0.05;
+
+            const offset = new THREE.Vector3(0, cameraHeight, cameraDistance).applyQuaternion(camera.quaternion);
+            camera.position.lerp(ship.position.clone().add(offset), 0.15);
+        }
+
+        // Unchanged: updateCamera, animate, updateProgress...
+
+        window.addEventListener('load', () => updateProgress(100));
+    </script>
+</body>
+</html>
